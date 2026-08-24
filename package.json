@@ -1,6 +1,6 @@
 {
   "name": "ruyi-haptic-web-demo",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "private": true,
   "description": "Windows Chromium haptic engineering prototype and zero-output Ruyi input diagnostics",
   "scripts": {

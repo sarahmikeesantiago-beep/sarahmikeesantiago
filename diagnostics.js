@@ -3,7 +3,7 @@
 (function initializeDiagnostics() {
   const MAX_EVENTS = 500;
   const MAX_TABLE_ROWS = 80;
-  const BUILD_REVISION = "ruyi-web-v1.1.0";
+  const BUILD_REVISION = "ruyi-web-v1.1.1";
   const DIAGNOSTICS_SCHEMA_VERSION = "ruyi-input-diagnostics-v2";
   const events = [];
   const pointerState = new Map();

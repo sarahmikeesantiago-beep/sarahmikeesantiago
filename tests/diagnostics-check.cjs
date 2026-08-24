@@ -73,7 +73,7 @@ async function run() {
   });
 
   const initial = await page.evaluate(() => window.HapticDiagnostics.buildSnapshot());
-  assert.equal(initial.buildRevision, "ruyi-web-v1.1.0");
+  assert.equal(initial.buildRevision, "ruyi-web-v1.1.1");
   assert.equal(initial.diagnosticsSchemaVersion, "ruyi-input-diagnostics-v2");
   assert.equal(initial.schemaVersion, "ruyi-input-diagnostics-v2");
   assert.equal(initial.pointerSummary.stationaryTest.status, "not-started");

@@ -95,7 +95,7 @@ async function run() {
       TEST_ARTIFACT_DIR: path.join(ROOT, "tests", "artifacts")
     });
     await runScript("github-pages-smoke.cjs", { PAGES_SMOKE_URL: baseUrl + "/" });
-    console.log(JSON.stringify({ status: "PASS", suite: "ruyi-web-v1.1.0", physicalHid: "not-used" }));
+    console.log(JSON.stringify({ status: "PASS", suite: "ruyi-web-v1.1.1", physicalHid: "not-used" }));
   } finally {
     await new Promise(resolve => server.close(resolve));
   }

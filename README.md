@@ -47,7 +47,7 @@
 
 ## 如意诊断格式 v2
 
-诊断 JSON 固定写入 "buildRevision: ruyi-web-v1.1.0" 与
+诊断 JSON 固定写入 "buildRevision: ruyi-web-v1.1.1" 与
 "diagnosticsSchemaVersion: ruyi-input-diagnostics-v2"。触摸摘要把不同含义的量分开记录：
 
 - maxDistanceFromStartPx：一次触点相对按下起点的最大移动范围；

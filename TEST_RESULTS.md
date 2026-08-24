@@ -1,4 +1,4 @@
-# Test results — ruyi-web-v1.1.0
+# Test results — ruyi-web-v1.1.1
 
 - Status: **PASS**
 - Measured: 2026-08-24 (Asia/Shanghai)
