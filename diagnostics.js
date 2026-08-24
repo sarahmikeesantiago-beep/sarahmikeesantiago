@@ -3,11 +3,18 @@
 (function initializeDiagnostics() {
   const MAX_EVENTS = 500;
   const MAX_TABLE_ROWS = 80;
+  const BUILD_REVISION = "ruyi-web-v1.1.0";
+  const DIAGNOSTICS_SCHEMA_VERSION = "ruyi-input-diagnostics-v2";
   const events = [];
   const pointerState = new Map();
+  const pointerEndReason = new Map();
   let renderScheduled = false;
   let toastTimer = 0;
-  let maxObservedDrift = 0;
+  let maxDistanceFromStart = 0;
+  let pointerCancelCount = 0;
+  let lostPointerCaptureCount = 0;
+  let unexpectedLostPointerCaptureCount = 0;
+  let stationaryTest = createStationaryTestState();
   let hidEnumeration = {
     status: "not-run",
     checkedAt: null,
@@ -24,7 +31,12 @@
     eventCount: document.getElementById("eventCount"),
     activePointerCount: document.getElementById("activePointerCount"),
     medianInterval: document.getElementById("medianInterval"),
-    maxDrift: document.getElementById("maxDrift"),
+    maxDistanceFromStart: document.getElementById("maxDistanceFromStart"),
+    stationaryDriftRadius: document.getElementById("stationaryDriftRadius"),
+    stepDistanceP95: document.getElementById("stepDistanceP95"),
+    pointerEndCounts: document.getElementById("pointerEndCounts"),
+    stationaryTestButton: document.getElementById("stationaryTestButton"),
+    stationaryStatus: document.getElementById("stationaryStatus"),
     eventTableBody: document.getElementById("eventTableBody"),
     clearEventsButton: document.getElementById("clearEventsButton"),
     enumerateHidButton: document.getElementById("enumerateHidButton"),
@@ -34,6 +46,20 @@
     exportButton: document.getElementById("exportButton"),
     toast: document.getElementById("toast")
   };
+
+  function createStationaryTestState() {
+    return {
+      status: "not-started",
+      active: false,
+      startedAt: null,
+      endedAt: null,
+      pointerId: null,
+      originX: null,
+      originY: null,
+      maxRadiusPx: null,
+      sampleCount: 0
+    };
+  }
 
   function formatNumber(value, digits) {
     return Number.isFinite(value) ? Number(value).toFixed(digits) : "--";
@@ -51,11 +77,30 @@
     return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
   }
 
+  function percentile(values, ratio) {
+    if (!values.length) return null;
+    const sorted = values.slice().sort(function sortNumbers(a, b) { return a - b; });
+    const position = (sorted.length - 1) * ratio;
+    const lower = Math.floor(position);
+    const upper = Math.ceil(position);
+    if (lower === upper) return sorted[lower];
+    return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
+  }
+
+  function pointerMoveStepP95() {
+    return percentile(events
+      .filter(function onlyMoves(item) { return item.type === "pointermove"; })
+      .map(function readDistance(item) { return item.deltaDistancePx; })
+      .filter(Number.isFinite), 0.95);
+  }
+
   function collectEnvironment() {
     const visualViewport = window.visualViewport;
     const orientation = window.screen && window.screen.orientation;
     const hid = navigator.hid;
     return {
+      buildRevision: BUILD_REVISION,
+      diagnosticsSchemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
       capturedAt: new Date().toISOString(),
       url: location.href,
       secureContext: Boolean(window.isSecureContext),
@@ -82,6 +127,8 @@
   function renderEnvironment() {
     const environment = collectEnvironment();
     const labels = {
+      buildRevision: "构建版本",
+      diagnosticsSchemaVersion: "诊断格式",
       capturedAt: "读取时间",
       url: "页面地址",
       secureContext: "安全上下文",
@@ -178,15 +225,37 @@
     });
   }
 
+  function renderStationaryStatus() {
+    const labels = {
+      "not-started": "尚未开始静止测试。",
+      armed: "静止测试已开始，请按下一个主触点并保持不动 3–5 秒。",
+      running: "正在记录触点 ID " + stationaryTest.pointerId + " 的静止漂移。",
+      "awaiting-end": "触点已结束；请点击“结束静止测试”保存本阶段结果。",
+      complete: "静止测试已完成，共 " + stationaryTest.sampleCount + " 个样本。",
+      "no-samples": "静止测试已结束，但没有记录到有效样本。"
+    };
+    elements.stationaryStatus.textContent = labels[stationaryTest.status] || labels["not-started"];
+    elements.stationaryTestButton.textContent = stationaryTest.active ? "结束静止测试" : "开始静止测试";
+    elements.stationaryTestButton.setAttribute("aria-pressed", String(stationaryTest.active));
+  }
+
   function renderEventSummary() {
     const intervals = events.map(function readInterval(item) { return item.deltaTimeMs; }).filter(function validInterval(value) {
       return Number.isFinite(value) && value > 0;
     });
     const medianValue = median(intervals);
+    const stepP95 = pointerMoveStepP95();
     elements.eventCount.textContent = String(events.length);
     elements.activePointerCount.textContent = String(pointerState.size);
     elements.medianInterval.textContent = medianValue === null ? "-- ms" : formatNumber(medianValue, 1) + " ms";
-    elements.maxDrift.textContent = events.length ? formatNumber(maxObservedDrift, 1) + " px" : "-- px";
+    elements.maxDistanceFromStart.textContent = events.length ? formatNumber(maxDistanceFromStart, 1) + " px" : "-- px";
+    elements.stationaryDriftRadius.textContent = stationaryTest.maxRadiusPx === null
+      ? "-- px"
+      : formatNumber(stationaryTest.maxRadiusPx, 2) + " px";
+    elements.stepDistanceP95.textContent = stepP95 === null ? "-- px" : formatNumber(stepP95, 2) + " px";
+    elements.pointerEndCounts.textContent = pointerCancelCount + " / " + lostPointerCaptureCount
+      + (unexpectedLostPointerCaptureCount ? " (" + unexpectedLostPointerCaptureCount + " 异常)" : "");
+    renderStationaryStatus();
   }
 
   function renderEventTable() {
@@ -222,25 +291,107 @@
     });
   }
 
+  function beginStationaryPointer(pointerId, localX, localY) {
+    stationaryTest.pointerId = Number(pointerId);
+    stationaryTest.originX = localX;
+    stationaryTest.originY = localY;
+    stationaryTest.maxRadiusPx = 0;
+    stationaryTest.sampleCount = 0;
+    stationaryTest.status = "running";
+  }
+
+  function updateStationaryTest(event, localX, localY) {
+    if (!stationaryTest.active) return null;
+    const isMotionSample = event.type === "pointerdown" || event.type === "pointermove";
+    if (stationaryTest.pointerId === null && isMotionSample && event.isPrimary) {
+      beginStationaryPointer(event.pointerId, localX, localY);
+    }
+    if (stationaryTest.pointerId !== Number(event.pointerId)) return null;
+    if (event.type === "pointerup" || event.type === "pointercancel" || event.type === "lostpointercapture") {
+      stationaryTest.status = "awaiting-end";
+      return null;
+    }
+    if (!isMotionSample) return null;
+    const radius = Math.hypot(localX - stationaryTest.originX, localY - stationaryTest.originY);
+    stationaryTest.maxRadiusPx = Math.max(stationaryTest.maxRadiusPx || 0, radius);
+    stationaryTest.sampleCount += 1;
+    return radius;
+  }
+
+  function startStationaryTest() {
+    stationaryTest = createStationaryTestState();
+    stationaryTest.active = true;
+    stationaryTest.startedAt = new Date().toISOString();
+    stationaryTest.status = "armed";
+    for (const [pointerId, state] of pointerState) {
+      if (!state.isPrimary) continue;
+      beginStationaryPointer(pointerId, state.x, state.y);
+      stationaryTest.sampleCount = 1;
+      break;
+    }
+    renderEventSummary();
+    showToast("静止测试已开始。");
+  }
+
+  function endStationaryTest() {
+    if (!stationaryTest.active) return false;
+    stationaryTest.active = false;
+    stationaryTest.endedAt = new Date().toISOString();
+    stationaryTest.status = stationaryTest.sampleCount ? "complete" : "no-samples";
+    renderEventSummary();
+    showToast("静止测试已结束。");
+    return true;
+  }
+
+  function toggleStationaryTest() {
+    if (stationaryTest.active) endStationaryTest();
+    else startStationaryTest();
+  }
+
+  function rememberPointerEnd(pointerId, reason) {
+    pointerEndReason.delete(pointerId);
+    pointerEndReason.set(pointerId, reason);
+    while (pointerEndReason.size > 32) {
+      pointerEndReason.delete(pointerEndReason.keys().next().value);
+    }
+  }
+
   function recordPointerEvent(event) {
     event.preventDefault();
     const rect = elements.pointerPad.getBoundingClientRect();
     const localX = Math.min(rect.width, Math.max(0, event.clientX - rect.left));
     const localY = Math.min(rect.height, Math.max(0, event.clientY - rect.top));
     const eventTime = Number(event.timeStamp) || performance.now();
-    let previous = pointerState.get(event.pointerId);
+    const existing = pointerState.get(event.pointerId);
+    const priorEndReason = pointerEndReason.get(event.pointerId) || null;
+    const afterPointerUp = event.type === "lostpointercapture" && priorEndReason === "pointerup";
+    const afterPointerEnd = event.type === "lostpointercapture" && priorEndReason !== null;
+    const unexpectedLostPointerCapture = event.type === "lostpointercapture" && Boolean(existing);
+    let previous = existing;
 
-    if (event.type === "pointerdown" || !previous) {
+    if (event.type === "pointerdown") {
+      pointerEndReason.delete(event.pointerId);
       previous = {
         x: localX,
         y: localY,
         time: eventTime,
         originX: localX,
         originY: localY,
-        pathLength: 0
+        pathLength: 0,
+        isPrimary: Boolean(event.isPrimary)
       };
       pointerState.set(event.pointerId, previous);
       try { elements.pointerPad.setPointerCapture(event.pointerId); } catch (_) {}
+    } else if (!previous) {
+      previous = {
+        x: localX,
+        y: localY,
+        time: eventTime,
+        originX: localX,
+        originY: localY,
+        pathLength: 0,
+        isPrimary: Boolean(event.isPrimary)
+      };
     }
 
     const deltaX = localX - previous.x;
@@ -249,8 +400,15 @@
     const deltaTime = Math.max(0, eventTime - previous.time);
     const speed = deltaTime > 0 ? deltaDistance * 1000 / deltaTime : 0;
     const distanceFromStart = Math.hypot(localX - previous.originX, localY - previous.originY);
-    maxObservedDrift = Math.max(maxObservedDrift, distanceFromStart);
+    maxDistanceFromStart = Math.max(maxDistanceFromStart, distanceFromStart);
 
+    if (event.type === "pointercancel") pointerCancelCount += 1;
+    if (event.type === "lostpointercapture") {
+      lostPointerCaptureCount += 1;
+      if (unexpectedLostPointerCapture) unexpectedLostPointerCaptureCount += 1;
+    }
+
+    const stationaryDistance = updateStationaryTest(event, localX, localY);
     const record = {
       elapsedMs: performance.now(),
       wallClock: new Date().toISOString(),
@@ -276,11 +434,22 @@
       height: Number(event.height) || 0,
       tiltX: Number(event.tiltX) || 0,
       tiltY: Number(event.tiltY) || 0,
-      twist: Number(event.twist) || 0
+      twist: Number(event.twist) || 0,
+      afterPointerUp: afterPointerUp,
+      afterPointerEnd: afterPointerEnd,
+      unexpectedLostPointerCapture: unexpectedLostPointerCapture,
+      stationaryTestActive: stationaryTest.active,
+      stationaryDistancePx: stationaryDistance
     };
 
     events.push(record);
     if (events.length > MAX_EVENTS) events.splice(0, events.length - MAX_EVENTS);
+
+    if (event.type === "pointerup" || event.type === "pointercancel") {
+      rememberPointerEnd(event.pointerId, event.type);
+    } else if (event.type === "lostpointercapture" && afterPointerEnd) {
+      pointerEndReason.delete(event.pointerId);
+    }
 
     if (event.type === "pointerup" || event.type === "pointercancel" || event.type === "lostpointercapture") {
       pointerState.delete(event.pointerId);
@@ -292,7 +461,8 @@
         time: eventTime,
         originX: previous.originX,
         originY: previous.originY,
-        pathLength: record.pathLengthPx
+        pathLength: record.pathLengthPx,
+        isPrimary: Boolean(event.isPrimary)
       });
       elements.pointerEcho.style.left = localX + "px";
       elements.pointerEcho.style.top = localY + "px";
@@ -375,9 +545,25 @@
     }
   }
 
+  function stationaryTestSnapshot() {
+    return {
+      status: stationaryTest.status,
+      active: stationaryTest.active,
+      startedAt: stationaryTest.startedAt,
+      endedAt: stationaryTest.endedAt,
+      pointerId: stationaryTest.pointerId,
+      originX: stationaryTest.originX,
+      originY: stationaryTest.originY,
+      maxRadiusPx: stationaryTest.maxRadiusPx,
+      sampleCount: stationaryTest.sampleCount
+    };
+  }
+
   function buildSnapshot() {
     return {
-      schemaVersion: "ruyi-input-diagnostics-v1",
+      buildRevision: BUILD_REVISION,
+      diagnosticsSchemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
+      schemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
       generatedAt: new Date().toISOString(),
       nonOutputDiagnostic: true,
       environment: collectEnvironment(),
@@ -387,7 +573,13 @@
         maxEventCount: MAX_EVENTS,
         activePointerCount: pointerState.size,
         medianIntervalMs: median(events.map(function readInterval(item) { return item.deltaTimeMs; }).filter(Number.isFinite)),
-        maxDistanceFromStartPx: maxObservedDrift
+        maxDistanceFromStartPx: maxDistanceFromStart,
+        stationaryDriftRadiusPx: stationaryTest.maxRadiusPx,
+        pointerMoveStepDistanceP95Px: pointerMoveStepP95(),
+        pointerCancelCount: pointerCancelCount,
+        lostPointerCaptureCount: lostPointerCaptureCount,
+        unexpectedLostPointerCaptureCount: unexpectedLostPointerCaptureCount,
+        stationaryTest: stationaryTestSnapshot()
       },
       events: events.map(function cloneEvent(item) { return Object.assign({}, item); })
     };
@@ -424,7 +616,12 @@
   function clearEvents() {
     events.length = 0;
     pointerState.clear();
-    maxObservedDrift = 0;
+    pointerEndReason.clear();
+    maxDistanceFromStart = 0;
+    pointerCancelCount = 0;
+    lostPointerCaptureCount = 0;
+    unexpectedLostPointerCaptureCount = 0;
+    stationaryTest = createStationaryTestState();
     elements.pointerEcho.classList.remove("is-visible");
     renderEventSummary();
     renderEventTable();
@@ -434,6 +631,7 @@
   ["pointerdown", "pointermove", "pointerup", "pointercancel", "lostpointercapture"].forEach(function bindPointer(type) {
     elements.pointerPad.addEventListener(type, recordPointerEvent);
   });
+  elements.stationaryTestButton.addEventListener("click", toggleStationaryTest);
   elements.clearEventsButton.addEventListener("click", clearEvents);
   elements.enumerateHidButton.addEventListener("click", enumerateAuthorizedHid);
   elements.copyButton.addEventListener("click", copySnapshot);
@@ -445,7 +643,12 @@
   renderEventTable();
 
   window.HapticDiagnostics = Object.freeze({
+    buildRevision: BUILD_REVISION,
+    diagnosticsSchemaVersion: DIAGNOSTICS_SCHEMA_VERSION,
     buildSnapshot: buildSnapshot,
-    enumerateAuthorizedHid: enumerateAuthorizedHid
+    clearEvents: clearEvents,
+    endStationaryTest: endStationaryTest,
+    enumerateAuthorizedHid: enumerateAuthorizedHid,
+    startStationaryTest: startStationaryTest
   });
 })();

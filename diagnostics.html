@@ -44,7 +44,10 @@
           <p class="section-kicker">02 / INFRARED TOUCH</p>
           <h2 id="pointerTitle">红外触摸框事件</h2>
         </div>
-        <button id="clearEventsButton" class="secondary-button" type="button">清空记录</button>
+        <div class="pointer-actions">
+          <button id="stationaryTestButton" class="secondary-button" type="button" aria-pressed="false">开始静止测试</button>
+          <button id="clearEventsButton" class="secondary-button" type="button">清空记录</button>
+        </div>
       </div>
 
       <div id="pointerPad" class="pointer-pad" tabindex="0" role="application" aria-label="红外触摸测试区域">
@@ -56,11 +59,16 @@
         </div>
       </div>
 
+      <p id="stationaryStatus" class="stationary-status" role="status">尚未开始静止测试。</p>
+
       <div class="stats-grid" aria-label="触摸事件统计">
         <div><span>事件数</span><strong id="eventCount">0</strong></div>
         <div><span>活动触点</span><strong id="activePointerCount">0</strong></div>
         <div><span>中位间隔</span><strong id="medianInterval">-- ms</strong></div>
-        <div><span>最大起点漂移</span><strong id="maxDrift">-- px</strong></div>
+        <div><span>最大离起点距离</span><strong id="maxDistanceFromStart">-- px</strong></div>
+        <div><span>静止漂移半径</span><strong id="stationaryDriftRadius">-- px</strong></div>
+        <div><span>单步位移 P95</span><strong id="stepDistanceP95">-- px</strong></div>
+        <div><span>取消 / 捕获丢失</span><strong id="pointerEndCounts">0 / 0</strong></div>
       </div>
 
       <div class="table-wrap">

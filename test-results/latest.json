@@ -1,0 +1,41 @@
+{
+  "buildRevision": "ruyi-web-v1.1.0",
+  "diagnosticsSchemaVersion": "ruyi-input-diagnostics-v2",
+  "measuredDate": "2026-08-24",
+  "timezone": "Asia/Shanghai",
+  "baselineCommit": "38e56f4bfafaebab96a3c191d8e4642b9f499607",
+  "environment": {
+    "os": "Microsoft Windows 11 Pro",
+    "osVersion": "10.0.26200",
+    "node": "24.16.0",
+    "browser": "Microsoft Edge / Chromium 151.0.4129.93",
+    "playwright": "1.62.1"
+  },
+  "command": "npm test",
+  "status": "PASS",
+  "physicalHidUsed": false,
+  "results": {
+    "protocol": { "status": "PASS", "checks": "4/4" },
+    "transport": { "status": "PASS", "checks": 11 },
+    "browser": { "status": "PASS", "checks": 17 },
+    "diagnostics": {
+      "status": "PASS",
+      "checks": 12,
+      "pointerEvents": 9,
+      "stationaryDriftRadiusPx": 10,
+      "pointerMoveStepDistanceP95Px": 5,
+      "pointerCancelCount": 1,
+      "lostPointerCaptureCount": 2,
+      "unexpectedLostPointerCaptureCount": 1,
+      "hidCalls": {
+        "getDevices": 1,
+        "requestDevice": 0,
+        "open": 0,
+        "sendReport": 0
+      }
+    },
+    "interaction": { "status": "PASS" },
+    "visual": { "status": "PASS", "screenshots": 5 },
+    "staticDeploymentSmoke": { "status": "PASS", "chapters": 4 }
+  }
+}

@@ -98,6 +98,8 @@ h2 { margin-bottom: 0; font-family: Georgia, "Noto Serif SC", serif; font-size: 
 }
 .primary-button { border: 1px solid var(--accent); color: #fff; background: var(--accent); }
 .secondary-button { border: 1px solid var(--hair-strong); background: rgba(255,255,255,0.55); }
+.secondary-button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.pointer-actions { display: flex; flex-wrap: wrap; gap: 10px; justify-content: flex-end; }
 button:disabled { cursor: wait; opacity: 0.52; }
 
 .pointer-pad {
@@ -128,7 +130,8 @@ button:disabled { cursor: wait; opacity: 0.52; }
 .pointer-echo { position: absolute; z-index: 2; width: 36px; height: 36px; border: 2px solid var(--accent); border-radius: 50%; opacity: 0; pointer-events: none; transform: translate(-50%,-50%); box-shadow: 0 0 0 12px rgba(47,101,217,0.1); }
 .pointer-echo.is-visible { opacity: 1; }
 
-.stats-grid { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-top: 16px; }
+.stationary-status { margin: 14px 0 0; padding: 11px 14px; border-left: 3px solid var(--safe); background: var(--safe-soft); color: var(--muted); font-size: 12px; line-height: 1.6; }
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(145px,1fr)); gap: 12px; margin-top: 16px; }
 .stats-grid div { padding: 14px 16px; border: 1px solid var(--hair); border-radius: 12px; background: rgba(255,255,255,0.45); }
 .stats-grid span { display: block; color: var(--muted); font-size: 10px; letter-spacing: 0.08em; }
 .stats-grid strong { display: block; margin-top: 7px; font-family: "Cascadia Mono", Consolas, monospace; font-size: 17px; }
@@ -170,7 +173,9 @@ noscript { position: fixed; inset: auto 20px 20px; z-index: 99; padding: 12px; b
   .hero-copy { font-size: 14px; }
   .environment-grid { grid-template-columns: 1fr; }
   .section-heading { align-items: flex-start; flex-direction: column; }
-  .section-heading button { width: 100%; }
+  .section-heading > button { width: 100%; }
+  .pointer-actions { width: 100%; flex-direction: column; }
+  .pointer-actions button { width: 100%; }
   .pointer-pad { min-height: 280px; }
   .stats-grid { gap: 8px; }
   .stats-grid div { padding: 12px; }

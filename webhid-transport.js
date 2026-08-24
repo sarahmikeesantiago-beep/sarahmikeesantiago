@@ -161,6 +161,7 @@
       try {
         await this.writeReport(device, reportId, report);
       } catch (error) {
+        if (device !== this.device) return false;
         throw this.enterFault(error);
       }
       if (generation !== this.generation || device !== this.device || !this.outputEnabled || this.faulted) return false;
@@ -391,6 +392,7 @@
         try {
           await this.writeReport(device, reportId, stopPayload);
         } catch (error) {
+          if (device !== this.device) return false;
           throw this.enterFault(error);
         }
         this.lastReport = null;

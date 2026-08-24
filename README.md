@@ -44,3 +44,26 @@
 - 页面失焦、触摸结束、取消、切换章节或关闭输出时会发送停止有效载荷。
 - 页面会对信号与停止包排序；停止请求会使此前尚未发送的信号失效。
 - 连续 350 ms 没有新的有效交互时自动停止，写入失败或超时后必须重新连接设备。
+
+## 如意诊断格式 v2
+
+诊断 JSON 固定写入 "buildRevision: ruyi-web-v1.1.0" 与
+"diagnosticsSchemaVersion: ruyi-input-diagnostics-v2"。触摸摘要把不同含义的量分开记录：
+
+- maxDistanceFromStartPx：一次触点相对按下起点的最大移动范围；
+- stationaryDriftRadiusPx：只在用户显式开始的静止测试阶段内统计；
+- pointerMoveStepDistanceP95Px：红外坐标相邻移动步长的第 95 百分位；
+- pointerCancelCount、lostPointerCaptureCount：原始结束事件计数；
+- unexpectedLostPointerCaptureCount：触点仍活动时发生的捕获丢失。正常 pointerup 后跟随的 lostpointercapture 会保留在原始计数中，但不会算作异常。
+
+## 可复现测试
+
+仓库包含 Node.js 模拟 HID、浏览器交互、零输出诊断、布局截图和静态部署冒烟测试。所有设备路径都使用模拟对象或明确的空设备列表，不连接、打开或写入实体 HID。
+
+~~~powershell
+npm ci
+npx playwright install chromium
+npm test
+~~~
+
+Windows 默认使用已安装的 Microsoft Edge；Linux CI 使用 Playwright Chromium。也可以通过 PLAYWRIGHT_CHANNEL 显式指定浏览器通道。每次推送到 main 时，GitHub Actions 会重跑相同测试并保存页面截图。
