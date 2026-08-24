@@ -578,6 +578,14 @@ async function init() {
     await runPacketSelfTest();
     transport.setProtocolReady(true);
     updateDeviceState(transport.state, transport.stateLabel || "协议自检已通过");
+    try {
+      const restored = await transport.restoreAuthorizedDevice();
+      if (restored) showToast("已恢复授权设备连接；触觉输出仍保持关闭。", 4200);
+    } catch (restoreError) {
+      const message = restoreError instanceof Error ? restoreError.message : String(restoreError || "恢复失败");
+      updateDeviceState(transport.state, message);
+      showToast("已授权设备恢复失败：" + message, 5200);
+    }
   } catch (error) {
     transport.setProtocolReady(false);
     elements.protocolBadge.textContent = "协议自检失败";

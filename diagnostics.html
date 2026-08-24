@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="如意车机与红外触摸框只读诊断页">
+  <meta name="color-scheme" content="light dark">
+  <title>如意车机 · 输入与环境诊断</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath d='M12 32h40M32 12v40' stroke='%232f65d9' stroke-width='6'/%3E%3Ccircle cx='32' cy='32' r='24' fill='none' stroke='%232f65d9' stroke-width='4'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="diagnostics.css">
+</head>
+<body>
+  <header class="diag-header">
+    <a class="back-link" href="index.html" aria-label="返回触感图谱演示">← 返回演示</a>
+    <span class="safe-badge">只读诊断 · 零触觉输出</span>
+  </header>
+
+  <main class="diag-shell">
+    <section class="hero">
+      <p class="eyebrow">FAW BESTUNE RUYI / MAINTENANCE</p>
+      <h1>车机环境与红外触摸诊断</h1>
+      <p class="hero-copy">用于确认如意车机浏览器能力、页面尺寸和红外触摸框的事件稳定性。本页不会请求新设备权限、不会打开 HID 设备，也不会发送任何触觉信号。</p>
+      <ul class="safety-list" aria-label="诊断安全边界">
+        <li>触摸区域只记录 Pointer Events</li>
+        <li>HID 检查只读取浏览器已经授权的设备列表</li>
+        <li>导出的 JSON 不包含触觉有效载荷</li>
+      </ul>
+    </section>
+
+    <section class="diag-card" aria-labelledby="environmentTitle">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">01 / ENVIRONMENT</p>
+          <h2 id="environmentTitle">运行环境</h2>
+        </div>
+        <span id="environmentTimestamp" class="section-status">正在读取</span>
+      </div>
+      <dl id="environmentGrid" class="environment-grid"></dl>
+    </section>
+
+    <section class="diag-card pointer-card" aria-labelledby="pointerTitle">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">02 / INFRARED TOUCH</p>
+          <h2 id="pointerTitle">红外触摸框事件</h2>
+        </div>
+        <button id="clearEventsButton" class="secondary-button" type="button">清空记录</button>
+      </div>
+
+      <div id="pointerPad" class="pointer-pad" tabindex="0" role="application" aria-label="红外触摸测试区域">
+        <div class="pad-grid" aria-hidden="true"></div>
+        <div id="pointerEcho" class="pointer-echo" aria-hidden="true"></div>
+        <div class="pad-copy">
+          <strong>在此单指按住、滑动、停留并松开</strong>
+          <span>建议分别测试慢速、快速、静止 3–5 秒和屏幕四角</span>
+        </div>
+      </div>
+
+      <div class="stats-grid" aria-label="触摸事件统计">
+        <div><span>事件数</span><strong id="eventCount">0</strong></div>
+        <div><span>活动触点</span><strong id="activePointerCount">0</strong></div>
+        <div><span>中位间隔</span><strong id="medianInterval">-- ms</strong></div>
+        <div><span>最大起点漂移</span><strong id="maxDrift">-- px</strong></div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>事件</th>
+              <th>ID / 类型</th>
+              <th>主触点</th>
+              <th>坐标</th>
+              <th>位移</th>
+              <th>速度</th>
+              <th>压力 / 接触面</th>
+            </tr>
+          </thead>
+          <tbody id="eventTableBody">
+            <tr><td colspan="8" class="empty-row">尚未记录触摸事件</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="diag-card" aria-labelledby="hidTitle">
+      <div class="section-heading">
+        <div>
+          <p class="section-kicker">03 / AUTHORIZED HID</p>
+          <h2 id="hidTitle">已授权 HID（只读）</h2>
+        </div>
+        <button id="enumerateHidButton" class="primary-button" type="button">只检查已授权 HID</button>
+      </div>
+      <p class="section-note">此操作只读取浏览器已经保存的授权记录，不弹出设备选择框，不打开设备，不写入 Report。</p>
+      <p id="hidStatus" class="hid-status" role="status">尚未检查</p>
+      <div id="deviceList" class="device-list"></div>
+    </section>
+
+    <section class="export-panel" aria-labelledby="exportTitle">
+      <div>
+        <p class="section-kicker">04 / EXPORT</p>
+        <h2 id="exportTitle">导出诊断记录</h2>
+        <p>JSON 包含环境、只读 HID 枚举结果、触摸摘要与最多 500 条事件。</p>
+      </div>
+      <div class="export-actions">
+        <button id="copyButton" class="secondary-button" type="button">复制 JSON</button>
+        <button id="exportButton" class="primary-button" type="button">导出 JSON</button>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <noscript>此诊断页需要启用 JavaScript 才能记录触摸事件。</noscript>
+  <script src="diagnostics.js" defer></script>
+</body>
+</html>

@@ -75,6 +75,9 @@
       this.stateLabel = "设备未连接";
       this.generation = 0;
       this.queue = Promise.resolve();
+      this.pendingSignal = null;
+      this.signalDrainPromise = null;
+      this.stopBarrierCount = 0;
       this.watchdogTimer = null;
       this.onState = () => {};
       this.onError = () => {};
@@ -104,6 +107,7 @@
       this.outputEnabled = false;
       this.clearWatchdog();
       this.generation += 1;
+      this.clearPendingSignal();
       this.lastReport = null;
       if (wasEnabled && this.device?.opened) this.stop(true).catch(error => this.onError(normalizedError(error, "停止输出失败")));
     }
@@ -111,6 +115,7 @@
     handlePhysicalDisconnect() {
       this.clearWatchdog();
       this.generation += 1;
+      this.clearPendingSignal();
       this.outputEnabled = false;
       this.lastReport = null;
       this.device = null;
@@ -143,6 +148,55 @@
       return result;
     }
 
+    clearPendingSignal() {
+      const pending = this.pendingSignal;
+      this.pendingSignal = null;
+      if (pending) pending.resolve(false);
+    }
+
+    async performSignal(request) {
+      const { device, force, generation, report, reportId } = request;
+      if (generation !== this.generation || device !== this.device || !this.outputEnabled || this.faulted) return false;
+      if (!force && this.lastReport && this.equalBytes?.(report, this.lastReport)) return true;
+      try {
+        await this.writeReport(device, reportId, report);
+      } catch (error) {
+        throw this.enterFault(error);
+      }
+      if (generation !== this.generation || device !== this.device || !this.outputEnabled || this.faulted) return false;
+      this.lastReport = report;
+      return true;
+    }
+
+    startSignalDrain() {
+      if (this.signalDrainPromise || this.stopBarrierCount > 0 || !this.pendingSignal) return;
+      const drain = this.enqueue(async () => {
+        while (this.stopBarrierCount === 0 && this.pendingSignal) {
+          const request = this.pendingSignal;
+          this.pendingSignal = null;
+          try {
+            request.resolve(await this.performSignal(request));
+          } catch (error) {
+            request.reject(error);
+            this.clearPendingSignal();
+            throw error;
+          }
+        }
+      });
+      this.signalDrainPromise = drain;
+      drain.catch(() => {}).finally(() => {
+        if (this.signalDrainPromise === drain) this.signalDrainPromise = null;
+        if (this.stopBarrierCount === 0 && this.pendingSignal) this.startSignalDrain();
+      });
+    }
+
+    queueLatestSignal(request) {
+      if (this.pendingSignal) this.pendingSignal.resolve(false);
+      this.pendingSignal = request;
+      this.startSignalDrain();
+      return request.completion;
+    }
+
     async writeReport(device, reportId, payload) {
       let timeoutId = null;
       const timeout = new Promise((_, reject) => {
@@ -163,6 +217,7 @@
       const device = this.device;
       this.clearWatchdog();
       this.generation += 1;
+      this.clearPendingSignal();
       this.outputEnabled = false;
       this.faulted = true;
       this.lastReport = null;
@@ -175,6 +230,39 @@
       return fault;
     }
 
+    compatibleDevices(devices) {
+      const matches = [];
+      for (const device of devices || []) {
+        if (device.vendorId !== this.vendorId || device.productId !== this.productId) continue;
+        try {
+          matches.push({ device, outputReport: discoverOutputReport(device, this.payloadLength) });
+        } catch (_) {}
+      }
+      return matches;
+    }
+
+    async attachCompatibleDevice(selected) {
+      const openedDevice = selected.device;
+      if (!openedDevice.opened) await openedDevice.open();
+      if (openedDevice.vendorId !== this.vendorId || openedDevice.productId !== this.productId) {
+        throw new Error("所选设备的VID/PID与触觉设备不一致");
+      }
+      const verifiedReport = discoverOutputReport(openedDevice, this.payloadLength);
+      if (verifiedReport.reportId !== selected.outputReport.reportId) throw new Error("设备输出报告在连接后发生变化");
+
+      this.clearWatchdog();
+      this.generation += 1;
+      this.clearPendingSignal();
+      this.device = openedDevice;
+      this.reportId = verifiedReport.reportId;
+      this.reportBytes = verifiedReport.byteLength;
+      this.outputEnabled = false;
+      this.faulted = false;
+      this.lastReport = null;
+      this.setState("connected", openedDevice.productName || "触觉设备已连接");
+      return openedDevice;
+    }
+
     async connect() {
       if (!this.supported) throw new Error("当前环境不支持 WebHID，请使用桌面版 Chrome/Edge并通过localhost或HTTPS打开。");
       this.setState("connecting", "正在选择指定触觉设备");
@@ -183,35 +271,13 @@
         const devices = await this.hid.requestDevice({
           filters: [{ vendorId: this.vendorId, productId: this.productId }]
         });
-        const matches = [];
-        for (const device of devices || []) {
-          if (device.vendorId !== this.vendorId || device.productId !== this.productId) continue;
-          try {
-            matches.push({ device, outputReport: discoverOutputReport(device, this.payloadLength) });
-          } catch (_) {}
-        }
+        const matches = this.compatibleDevices(devices);
         if (!matches.length) throw new Error("没有选择兼容的触觉设备，或设备缺少64字节输出报告");
         if (matches.length !== 1) throw new Error("检测到多个兼容的触觉接口，无法安全确定输出接口");
 
         const selected = matches[0];
         openedDevice = selected.device;
-        if (!openedDevice.opened) await openedDevice.open();
-        if (openedDevice.vendorId !== this.vendorId || openedDevice.productId !== this.productId) {
-          throw new Error("所选设备的VID/PID与触觉设备不一致");
-        }
-        const verifiedReport = discoverOutputReport(openedDevice, this.payloadLength);
-        if (verifiedReport.reportId !== selected.outputReport.reportId) throw new Error("设备输出报告在连接后发生变化");
-
-        this.clearWatchdog();
-        this.generation += 1;
-        this.device = openedDevice;
-        this.reportId = verifiedReport.reportId;
-        this.reportBytes = verifiedReport.byteLength;
-        this.outputEnabled = false;
-        this.faulted = false;
-        this.lastReport = null;
-        this.setState("connected", openedDevice.productName || "触觉设备已连接");
-        return openedDevice;
+        return await this.attachCompatibleDevice(selected);
       } catch (error) {
         if (openedDevice?.opened) {
           try { await openedDevice.close(); } catch (_) {}
@@ -221,6 +287,38 @@
         this.reportId = 0;
         this.reportBytes = 0;
         this.setState("error", normalizedError(error, "连接触觉设备失败").message);
+        throw error;
+      }
+    }
+
+    async restoreAuthorizedDevice() {
+      if (!this.secureContext || typeof this.hid?.getDevices !== "function") return false;
+      if (this.device?.opened && !this.faulted) return true;
+      this.setState("connecting", "正在检查已授权触觉设备");
+      let openedDevice = null;
+      try {
+        const matches = this.compatibleDevices(await this.hid.getDevices());
+        if (!matches.length) {
+          this.setState("disconnected", "未发现已授权触觉设备");
+          return false;
+        }
+        if (matches.length !== 1) {
+          this.setState("disconnected", "检测到多个已授权触觉接口，请手动连接");
+          return false;
+        }
+        openedDevice = matches[0].device;
+        await this.attachCompatibleDevice(matches[0]);
+        return true;
+      } catch (error) {
+        if (openedDevice?.opened) {
+          try { await openedDevice.close(); } catch (_) {}
+        }
+        this.clearPendingSignal();
+        this.device = null;
+        this.outputEnabled = false;
+        this.reportId = 0;
+        this.reportBytes = 0;
+        this.setState("error", normalizedError(error, "恢复已授权触觉设备失败").message);
         throw error;
       }
     }
@@ -255,17 +353,21 @@
       const device = this.device;
       const reportId = this.reportId;
       this.refreshWatchdog();
-
-      return this.enqueue(async () => {
-        if (generation !== this.generation || device !== this.device || !this.outputEnabled || this.faulted) return false;
-        if (!force && this.lastReport && this.equalBytes?.(report, this.lastReport)) return true;
-        try {
-          await this.writeReport(device, reportId, report);
-        } catch (error) {
-          throw this.enterFault(error);
-        }
-        if (generation === this.generation && device === this.device) this.lastReport = report;
-        return true;
+      let resolveCompletion;
+      let rejectCompletion;
+      const completion = new Promise((resolve, reject) => {
+        resolveCompletion = resolve;
+        rejectCompletion = reject;
+      });
+      return this.queueLatestSignal({
+        completion,
+        device,
+        force,
+        generation,
+        reject: rejectCompletion,
+        report,
+        reportId,
+        resolve: resolveCompletion
       });
     }
 
@@ -282,7 +384,9 @@
       }
 
       this.generation += 1;
-      return this.enqueue(async () => {
+      this.clearPendingSignal();
+      this.stopBarrierCount += 1;
+      const stopTask = this.enqueue(async () => {
         if (device !== this.device || !device.opened || this.faulted) return false;
         try {
           await this.writeReport(device, reportId, stopPayload);
@@ -291,6 +395,10 @@
         }
         this.lastReport = null;
         return true;
+      });
+      return stopTask.finally(() => {
+        this.stopBarrierCount = Math.max(0, this.stopBarrierCount - 1);
+        if (this.stopBarrierCount === 0 && this.pendingSignal) this.startSignalDrain();
       });
     }
 
@@ -304,6 +412,7 @@
         try { await device.close(); } catch (error) { failure ||= normalizedError(error, "关闭设备失败"); }
       }
       this.generation += 1;
+      this.clearPendingSignal();
       this.device = null;
       this.reportId = 0;
       this.reportBytes = 0;
