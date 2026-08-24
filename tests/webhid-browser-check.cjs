@@ -88,6 +88,42 @@ function assertClose(actual, expected, label) {
   assert.ok(Math.abs(actual - expected) < 1e-9, label + ": expected " + expected + ", received " + actual);
 }
 
+const MATERIAL_TITLES = ["旋钮纹理再现", "凸起纹理再现", "化石纹理再现", "橡胶纹理再现"];
+
+async function stableBoundingBox(page, locator, timeoutMs = 3000) {
+  const started = Date.now();
+  let previous = null;
+  let stableSamples = 0;
+  while (Date.now() - started < timeoutMs) {
+    const box = await locator.boundingBox();
+    if (box) {
+      const stable = previous
+        && Math.abs(box.x - previous.x) < 0.5
+        && Math.abs(box.y - previous.y) < 0.5
+        && Math.abs(box.width - previous.width) < 0.5
+        && Math.abs(box.height - previous.height) < 0.5;
+      stableSamples = stable ? stableSamples + 1 : 0;
+      if (stableSamples >= 2) return box;
+      previous = box;
+    }
+    await page.waitForTimeout(80);
+  }
+  throw new Error("Timed out waiting for a stable interaction surface");
+}
+
+async function waitForMaterial(page, index) {
+  await page.waitForFunction(({ materialIndex, title }) => {
+    const rail = document.querySelector('.rail-item[data-index="' + materialIndex + '"]');
+    const image = document.querySelector("#demoImage");
+    return rail?.hasAttribute("aria-current")
+      && document.querySelector("#chapterTitle")?.textContent === title
+      && image?.complete
+      && image.naturalWidth > 0
+      && !image.classList.contains("is-swapping");
+  }, { materialIndex: index, title: MATERIAL_TITLES[index] });
+  return stableBoundingBox(page, page.locator("#demoImage"));
+}
+
 async function assertImageCoordinateMapping(page) {
   const result = await page.evaluate(() => {
     const squareBox = { left: 0, top: 0, width: 300, height: 200 };
@@ -133,10 +169,8 @@ function assertSignalAndStop(calls, expectedPayload) {
 }
 
 async function exerciseSurface(page, index, expectedFrequency, shape) {
-  await page.locator(`.rail-item[data-index="${index}"]`).click();
-  await page.waitForTimeout(260);
-  const imageBox = await page.locator("#demoImage").boundingBox();
-  if (!imageBox) throw new Error(`Surface ${index} image is missing`);
+  await page.locator('.rail-item[data-index="' + index + '"]').click();
+  const imageBox = await waitForMaterial(page, index);
   await resetCalls(page);
   await page.mouse.move(imageBox.x + imageBox.width * 0.48, imageBox.y + imageBox.height * 0.52);
   await page.mouse.down();
@@ -198,9 +232,7 @@ async function runNormalFlow(browser) {
   await exerciseSurface(page, 3, 60, "正弦波");
 
   await page.locator('.rail-item[data-index="1"]').click();
-  await page.waitForTimeout(260);
-  const touchBox = await page.locator("#demoImage").boundingBox();
-  if (!touchBox) throw new Error("Touch surface is missing");
+  const touchBox = await waitForMaterial(page, 1);
   const touchY = touchBox.y + touchBox.height * 0.5;
   const touchX1 = touchBox.x + touchBox.width * 0.42;
   const touchX2 = touchBox.x + touchBox.width * 0.58;
@@ -260,8 +292,7 @@ async function runNormalFlow(browser) {
   assert.equal((await readCalls(page)).at(-1).bytes[0], 0x83);
 
   await page.locator('.rail-item[data-index="1"]').click();
-  await page.waitForTimeout(260);
-  const bumpBox = await page.locator("#demoImage").boundingBox();
+  const bumpBox = await waitForMaterial(page, 1);
   await resetCalls(page);
   await page.mouse.move(bumpBox.x + bumpBox.width / 2, bumpBox.y + bumpBox.height / 2);
   await page.mouse.down();
