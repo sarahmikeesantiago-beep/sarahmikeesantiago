@@ -46,17 +46,36 @@ function serve(request, response) {
 
 function runScript(script, extraEnvironment = {}) {
   return new Promise((resolve, reject) => {
+    let captured = "";
     const child = spawn(process.execPath, [path.join(__dirname, script)], {
       cwd: ROOT,
       env: Object.assign({}, process.env, extraEnvironment),
-      stdio: "inherit"
+      stdio: ["ignore", "pipe", "pipe"]
     });
+    function forward(stream, destination) {
+      stream.on("data", chunk => {
+        destination.write(chunk);
+        captured = (captured + chunk.toString()).slice(-8000);
+      });
+    }
+    forward(child.stdout, process.stdout);
+    forward(child.stderr, process.stderr);
     child.once("error", reject);
     child.once("exit", code => {
       if (code === 0) resolve();
-      else reject(new Error(script + " exited with code " + code));
+      else reject(new Error(script + " exited with code " + code + "\n" + captured));
     });
   });
+}
+
+function emitWorkflowFailure(error) {
+  if (process.env.GITHUB_ACTIONS !== "true") return;
+  const message = String(error && (error.stack || error.message) || error)
+    .slice(-7500)
+    .replace(/%/g, "%25")
+    .replace(/\r/g, "%0D")
+    .replace(/\n/g, "%0A");
+  console.error("::error title=Ruyi simulated test suite failed::" + message);
 }
 
 async function run() {
@@ -84,5 +103,6 @@ async function run() {
 
 run().catch(error => {
   console.error(error.stack || error.message);
+  emitWorkflowFailure(error);
   process.exit(1);
 });

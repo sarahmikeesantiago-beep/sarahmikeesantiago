@@ -2,8 +2,10 @@ const { chromium } = require("playwright");
 
 async function launchChromium(options = {}) {
   const launchOptions = Object.assign({ headless: true }, options);
-  const requestedChannel = process.env.PLAYWRIGHT_CHANNEL
-    || (process.platform === "win32" ? "msedge" : "");
+  const channelSetting = process.env.PLAYWRIGHT_CHANNEL;
+  const requestedChannel = channelSetting === "none"
+    ? ""
+    : channelSetting || (process.platform === "win32" ? "msedge" : "");
   if (requestedChannel && !Object.prototype.hasOwnProperty.call(launchOptions, "channel")) {
     launchOptions.channel = requestedChannel;
   }
