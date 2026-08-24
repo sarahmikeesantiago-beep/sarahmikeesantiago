@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="description" content="四种材质的交互式触觉纹理再现网页原型">
+  <meta name="color-scheme" content="light dark">
+  <title>触感图谱 · 四种材质纹理再现</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='25' fill='none' stroke='%232f65d9' stroke-width='5'/%3E%3Ccircle cx='32' cy='32' r='10' fill='%232f65d9'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#scroll">跳到材质章节</a>
+
+  <div id="ambient" aria-hidden="true">
+    <div class="ambient-wash"></div>
+    <div class="ambient-grid"></div>
+    <div class="ambient-grain"></div>
+    <div class="ambient-glyph" id="ambientGlyph">旋钮</div>
+  </div>
+
+  <header class="topbar">
+    <a class="brand" href="#knob" aria-label="返回第一章：旋钮纹理再现">
+      <svg class="brand-mark" viewBox="0 0 48 48" aria-hidden="true">
+        <circle cx="24" cy="24" r="19"></circle>
+        <circle cx="24" cy="24" r="9"></circle>
+        <path d="M24 5v6M24 37v6M5 24h6M37 24h6"></path>
+        <path d="M13.4 13.4l4.2 4.2M30.4 30.4l4.2 4.2M34.6 13.4l-4.2 4.2M17.6 30.4l-4.2 4.2"></path>
+      </svg>
+      <span>
+        <strong>触感图谱</strong>
+        <small>HAPTIC MATERIAL ATLAS</small>
+      </span>
+    </a>
+
+    <div class="topbar-actions">
+      <button class="icon-button" id="themeButton" type="button" aria-label="切换明暗主题" aria-pressed="false">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="4.2"></circle>
+          <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M18.7 5.3l-1.6 1.6M6.9 17.1l-1.6 1.6"></path>
+        </svg>
+      </button>
+      <button class="device-button" id="deviceButton" type="button">
+        <span class="device-dot" aria-hidden="true"></span>
+        <span id="deviceButtonText">连接触觉设备</span>
+      </button>
+      <button class="output-button" id="outputButton" type="button" aria-pressed="false" disabled>
+        触觉输出：关闭
+      </button>
+    </div>
+  </header>
+
+  <main>
+    <section class="fixed-copy" id="fixedCopy" aria-live="polite">
+      <div class="chapter-index">
+        <span id="chapterNumber">01</span>
+        <span class="chapter-line"></span>
+        <span>04</span>
+      </div>
+
+      <div class="title-lockup">
+        <img class="hand-icon" src="assets/hand-single.png" alt="" aria-hidden="true">
+        <div>
+          <h1 id="chapterTitle">旋钮纹理再现</h1>
+          <span class="title-underline" aria-hidden="true"></span>
+        </div>
+      </div>
+
+      <p class="chapter-en" id="chapterEnglish">ROTARY HAPTIC TEXTURE</p>
+      <p class="chapter-description" id="chapterDescription">
+        沿旋钮外缘按住并拖动。转动速度会映射为触觉频率，让机械刻度在指尖形成连续反馈。
+      </p>
+
+      <dl class="chapter-meta" id="chapterMeta">
+        <div><dt>波形</dt><dd id="metaWave">方波</dd></div>
+        <div><dt>频率</dt><dd id="metaFrequency">16–96 Hz</dd></div>
+        <div><dt>幅值</dt><dd id="metaMagnitude">135</dd></div>
+      </dl>
+
+      <div class="instruction">
+        <span class="instruction-number">操作</span>
+        <p id="chapterInstruction">单指接触旋钮外环并拖动；松开后立即停止输出。</p>
+      </div>
+
+      <div class="live-readout" aria-label="当前触觉参数">
+        <span class="readout-state" id="interactionState">等待触摸</span>
+        <span><b id="liveFrequency">--</b> Hz</span>
+        <span><b id="liveWave">方波</b></span>
+      </div>
+    </section>
+
+    <section class="fixed-stage" aria-label="当前材质交互区域">
+      <div class="stage-caption">
+        <span>TOUCH / DRAG</span>
+        <span id="protocolBadge">协议自检中</span>
+      </div>
+      <div class="media-shell" id="mediaShell">
+        <div class="media-orbit orbit-a" aria-hidden="true"></div>
+        <div class="media-orbit orbit-b" aria-hidden="true"></div>
+        <img id="demoImage" class="demo-image is-knob" src="assets/knob.jpg" alt="银色机械旋钮">
+        <div class="pointer-marker" id="pointerMarker" aria-hidden="true"><span></span></div>
+        <div class="touch-ripple" id="touchRipple" aria-hidden="true"></div>
+        <button class="interaction-surface" id="interactionSurface" type="button" aria-label="触摸并拖动旋钮"></button>
+      </div>
+      <div class="stage-footer">
+        <span id="stageHint">按住外环后旋转</span>
+        <span class="stage-coordinates" id="stageCoordinates">X -- / Y --</span>
+      </div>
+    </section>
+
+    <nav class="rail" id="rail" aria-label="材质章节导航">
+      <button class="rail-item is-active" type="button" data-index="0" aria-current="true">
+        <span class="rail-label">旋钮</span><span class="rail-bar"></span>
+      </button>
+      <button class="rail-item" type="button" data-index="1">
+        <span class="rail-label">凸起</span><span class="rail-bar"></span>
+      </button>
+      <button class="rail-item" type="button" data-index="2">
+        <span class="rail-label">化石</span><span class="rail-bar"></span>
+      </button>
+      <button class="rail-item" type="button" data-index="3">
+        <span class="rail-label">橡胶</span><span class="rail-bar"></span>
+      </button>
+    </nav>
+    <div class="rail-progress" id="railProgress" aria-hidden="true"></div>
+
+    <nav class="material-strip" aria-label="横向材质导航">
+      <div class="strip-track" id="stripTrack" role="listbox" aria-label="四种材质">
+        <button class="material-chip is-active" type="button" data-index="0" role="option" aria-selected="true">
+          <span class="chip-index">01</span><strong>旋钮</strong><small>KNOB</small>
+        </button>
+        <button class="material-chip" type="button" data-index="1" role="option" aria-selected="false">
+          <span class="chip-index">02</span><strong>凸起</strong><small>BUMP</small>
+        </button>
+        <button class="material-chip" type="button" data-index="2" role="option" aria-selected="false">
+          <span class="chip-index">03</span><strong>化石</strong><small>FOSSIL</small>
+        </button>
+        <button class="material-chip" type="button" data-index="3" role="option" aria-selected="false">
+          <span class="chip-index">04</span><strong>橡胶</strong><small>RUBBER</small>
+        </button>
+      </div>
+      <div class="strip-progress"><span id="stripProgress"></span></div>
+    </nav>
+
+    <div id="scroll" class="scroll-document">
+      <section class="scroll-chapter" id="knob" data-index="0" aria-label="第一章，旋钮纹理再现">
+        <h2 class="sr-only">旋钮纹理再现</h2>
+      </section>
+      <section class="scroll-chapter" id="bump" data-index="1" aria-label="第二章，凸起纹理再现">
+        <h2 class="sr-only">凸起纹理再现</h2>
+      </section>
+      <section class="scroll-chapter" id="fossil" data-index="2" aria-label="第三章，化石纹理再现">
+        <h2 class="sr-only">化石纹理再现</h2>
+      </section>
+      <section class="scroll-chapter" id="rubber" data-index="3" aria-label="第四章，橡胶纹理再现">
+        <h2 class="sr-only">橡胶纹理再现</h2>
+      </section>
+    </div>
+  </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <noscript>此网页需要启用 JavaScript 才能运行材质切换与触觉预览。</noscript>
+  <script src="haptic-protocol.js" defer></script>
+  <script src="webhid-transport.js" defer></script>
+  <script src="app.js" defer></script>
+</body>
+</html>
