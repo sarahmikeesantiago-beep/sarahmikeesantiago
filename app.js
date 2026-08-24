@@ -116,6 +116,7 @@ let lastKnobTime = 0;
 let lastSurfaceSend = 0;
 let toastTimer = 0;
 let fossilSampler = null;
+let materialRenderGeneration = 0;
 
 const transport = new WebHidTransport();
 transport.onState = updateDeviceState;
@@ -152,6 +153,7 @@ function setActiveMaterial(index, pushHash = false) {
   if (!next || index === activeIndex) return;
   stopInteraction();
   activeIndex = index;
+  const renderGeneration = ++materialRenderGeneration;
 
   elements.fixedCopy.classList.remove("is-swapping");
   elements.ambientGlyph.classList.add("is-swapping");
@@ -174,6 +176,7 @@ function setActiveMaterial(index, pushHash = false) {
 
   elements.demoImage.classList.add("is-swapping");
   window.setTimeout(() => {
+    if (renderGeneration !== materialRenderGeneration) return;
     elements.demoImage.src = next.image;
     elements.demoImage.alt = next.alt;
     elements.demoImage.style.transform = next.type === "knob" ? `rotate(${knobAngle}deg)` : "none";
@@ -184,6 +187,7 @@ function setActiveMaterial(index, pushHash = false) {
   }, 175);
 
   window.setTimeout(() => {
+    if (renderGeneration !== materialRenderGeneration) return;
     elements.ambientGlyph.textContent = next.short;
     elements.ambientGlyph.classList.remove("is-swapping");
   }, 160);
@@ -208,25 +212,48 @@ function setActiveMaterial(index, pushHash = false) {
 function navigateTo(index) {
   const chapter = chapters[index];
   if (!chapter) return;
+  stopInteraction();
   chapter.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   history.pushState(null, "", `#${MATERIALS[index].id}`);
 }
 
+function mapCoverPoint(clientX, clientY, imageRect, naturalWidth, naturalHeight) {
+  const boxWidth = Math.max(1, imageRect.width);
+  const boxHeight = Math.max(1, imageRect.height);
+  const imageX = Math.min(boxWidth, Math.max(0, clientX - imageRect.left));
+  const imageY = Math.min(boxHeight, Math.max(0, clientY - imageRect.top));
+  const sourceWidth = naturalWidth > 0 ? naturalWidth : boxWidth;
+  const sourceHeight = naturalHeight > 0 ? naturalHeight : boxHeight;
+  const scale = Math.max(boxWidth / sourceWidth, boxHeight / sourceHeight);
+  const renderedWidth = sourceWidth * scale;
+  const renderedHeight = sourceHeight * scale;
+  const cropX = Math.max(0, (renderedWidth - boxWidth) / 2);
+  const cropY = Math.max(0, (renderedHeight - boxHeight) / 2);
+  return {
+    nx: Math.min(1, Math.max(0, (imageX + cropX) / renderedWidth)),
+    ny: Math.min(1, Math.max(0, (imageY + cropY) / renderedHeight))
+  };
+}
 function localPoint(event) {
   const rect = elements.mediaShell.getBoundingClientRect();
   const imageRect = elements.demoImage.getBoundingClientRect();
   const x = Math.min(rect.width, Math.max(0, event.clientX - rect.left));
   const y = Math.min(rect.height, Math.max(0, event.clientY - rect.top));
-  const imageX = Math.min(imageRect.width, Math.max(0, event.clientX - imageRect.left));
-  const imageY = Math.min(imageRect.height, Math.max(0, event.clientY - imageRect.top));
   const insideImage = event.clientX >= imageRect.left && event.clientX <= imageRect.right && event.clientY >= imageRect.top && event.clientY <= imageRect.bottom;
+  const imagePoint = mapCoverPoint(
+    event.clientX,
+    event.clientY,
+    imageRect,
+    elements.demoImage.naturalWidth,
+    elements.demoImage.naturalHeight
+  );
   return {
     x,
     y,
     nx: x / Math.max(1, rect.width),
     ny: y / Math.max(1, rect.height),
-    imageNx: imageX / Math.max(1, imageRect.width),
-    imageNy: imageY / Math.max(1, imageRect.height),
+    imageNx: imagePoint.nx,
+    imageNy: imagePoint.ny,
     insideImage,
     rect
   };
@@ -247,15 +274,10 @@ function normalizedDelta(from, to) {
 
 function beginInteraction(event) {
   if (event.button !== undefined && event.button > 0) return;
+  if (pointerActive || event.isPrimary === false) return;
   const material = MATERIALS[activeIndex];
+  if (!material) return;
   const point = localPoint(event);
-  pointerActive = true;
-  activePointerId = event.pointerId;
-  elements.mediaShell.classList.add("is-interacting");
-  elements.interactionSurface.setPointerCapture?.(event.pointerId);
-  positionPointer(point);
-  pulseAt(point);
-  elements.interactionState.textContent = transport.outputEnabled ? "正在输出" : "交互预览";
 
   if (material.type === "knob") {
     const dx = point.x - point.rect.width / 2;
@@ -263,22 +285,28 @@ function beginInteraction(event) {
     const radius = Math.hypot(dx, dy);
     const validRadius = Math.min(point.rect.width, point.rect.height) * 0.42;
     if (radius < validRadius * 0.26 || radius > validRadius * 1.08) {
-      pointerActive = false;
-      elements.mediaShell.classList.remove("is-interacting");
       elements.interactionState.textContent = "请触摸旋钮外环";
       return;
     }
+  } else if (!point.insideImage) {
+    elements.interactionState.textContent = "请触摸图片区域";
+    return;
+  }
+
+  pointerActive = true;
+  activePointerId = event.pointerId;
+  elements.mediaShell.classList.add("is-interacting");
+  try { elements.interactionSurface.setPointerCapture?.(event.pointerId); } catch (_) {}
+  positionPointer(point);
+  pulseAt(point);
+  elements.interactionState.textContent = transport.outputEnabled ? "正在输出" : "交互预览";
+
+  if (material.type === "knob") {
     knobStartPointerAngle = pointerAngle(point);
     knobStartRotation = knobAngle;
     lastKnobAngle = knobAngle;
     lastKnobTime = performance.now();
   } else {
-    if (!point.insideImage) {
-      pointerActive = false;
-      elements.mediaShell.classList.remove("is-interacting");
-      elements.interactionState.textContent = "请触摸图片区域";
-      return;
-    }
     sendSurfaceSignal(material, point, true);
   }
 }
@@ -357,11 +385,17 @@ function prepareFossilSampler() {
   else image.addEventListener("load", build, { once: true });
 }
 
+function fossilPixelPoint(nx, ny, width, height) {
+  return {
+    x: Math.min(width - 65, Math.max(64, Math.floor(nx * width))),
+    y: Math.min(height - 65, Math.max(64, Math.floor(ny * height)))
+  };
+}
+
 function sampleFossilFrequency(nx, ny) {
   if (!fossilSampler) return 28;
   const { width, height, data } = fossilSampler;
-  const x = Math.min(width - 65, Math.max(64, Math.floor(nx * width)));
-  const y = Math.min(height - 65, Math.max(64, Math.floor((1 - ny) * height)));
+  const { x, y } = fossilPixelPoint(nx, ny, width, height);
   let bestScale = 1;
   let bestDifference = -1;
   const grayAt = (px, py) => {
@@ -412,8 +446,14 @@ function endInteraction(event) {
 }
 
 function stopInteraction() {
+  const pointerId = activePointerId;
   pointerActive = false;
   activePointerId = null;
+  try {
+    if (pointerId !== null && elements.interactionSurface.hasPointerCapture?.(pointerId)) {
+      elements.interactionSurface.releasePointerCapture(pointerId);
+    }
+  } catch (_) {}
   elements.mediaShell.classList.remove("is-interacting");
   elements.interactionState.textContent = "等待触摸";
   if (transport.outputEnabled) {
